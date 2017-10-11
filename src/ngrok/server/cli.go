@@ -19,10 +19,10 @@ func parseArgs() *Options {
 	httpAddr := flag.String("httpAddr", ":80", "HTTP连接端口，禁用空字符串")
 	httpsAddr := flag.String("httpsAddr", ":443", "HTTPS连接端口，禁用空字符串")
 	tunnelAddr := flag.String("tunnelAddr", ":4443", "ngrok客户端连接端口，禁用空字符串")
-	domain := flag.String("domain", "chengang.win", "承载隧道的域名")
+	domain := flag.String("domain", "ngrok.com", "承载隧道的域名")
 	tlsCrt := flag.String("tlsCrt", "", "TLS证书文件的路径")
 	tlsKey := flag.String("tlsKey", "", "TLS密钥文件的路径")
-	logto := flag.String("log", "ngrok_log.txt", "将日志消息写入此文件。 'stdout'和'none'有特殊意义)
+	logto := flag.String("log", "ngrok_log.log", "将日志消息写入此文件。 'stdout'和'none'有特殊意义")
 	loglevel := flag.String("log-level", "INFO", "要记录的消息级别。 其中之一: DEBUG, INFO, WARNING, ERROR")
 	flag.Parse()
 
