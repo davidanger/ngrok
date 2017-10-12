@@ -21,6 +21,12 @@ Content-Length: 23
 Authorization required
 `
 
+	NotKeyAuthorized = `HTTP/1.0 401 Unauthorized
+Content-Length: 12
+
+未授权客户机访问数据。
+`
+
 	NotFound = `HTTP/1.0 404 Not Found
 Content-Length: %d
 
@@ -100,12 +106,13 @@ func httpHandler(c conn.Conn, proto string) {
 	}
 
 	//添加cookie签名验证,过期时间为1天
-	CookieTimeInt64, err := strconv.ParseInt(CookieTime.String(), 10, 64)
-	md5Byte := md5.Sum( []byte(fmt.Sprintf("%s%s", "Dqlt6dsUE8WACmqmIznB", CookieTime.String())) )
-	signString := string(md5Byte[:])
-	if(signString != CookieKey.String() || CookieTimeInt64 + 86400 > time.Now().Unix() ){
-		c.Info("签名验证失败: %s", CookieKey.String())
-		c.Write([]byte(NotAuthorized))
+	CookieTimeInt64, err := strconv.ParseInt(CookieTime.Value, 10, 64)
+	md5Byte := md5.Sum( []byte(fmt.Sprintf("%s%s", "Dqlt6dsUE8WACmqmIznB", CookieTime.Value)) )
+	signString := fmt.Sprintf("%x", md5Byte)
+	isExpire := CookieTimeInt64 <= (time.Now().Unix() - 86400)
+	if(signString != CookieKey.Value || isExpire ){
+		c.Info("签名验证失败: %s, 时间戳: %s, 是否过期:%t, 正确签名: %s", CookieKey.Value, CookieTime.Value, isExpire, signString)
+		c.Write([]byte(NotKeyAuthorized))
 		return
 	}
 
