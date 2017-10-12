@@ -1,4 +1,5 @@
 *.swp
+.idea
 bin/
 pkg/
 src/code.google.com

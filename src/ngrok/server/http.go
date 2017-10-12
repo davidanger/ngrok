@@ -9,6 +9,8 @@ import (
 	"ngrok/log"
 	"strings"
 	"time"
+	"crypto/md5"
+	"strconv"
 )
 
 const (
@@ -79,6 +81,8 @@ func httpHandler(c conn.Conn, proto string) {
 	// read out the Host header and auth from the request
 	host := strings.ToLower(vhostConn.Host())
 	auth := vhostConn.Request.Header.Get("Authorization")
+	CookieKey, _ := vhostConn.Request.Cookie("tunnels-key")
+	CookieTime, _ := vhostConn.Request.Cookie("tunnels-time")
 
 	// done reading mux data, free up the request memory
 	vhostConn.Free()
@@ -95,11 +99,21 @@ func httpHandler(c conn.Conn, proto string) {
 		return
 	}
 
+	//添加cookie签名验证,过期时间为1天
+	CookieTimeInt64, err := strconv.ParseInt(CookieTime.String(), 10, 64)
+	md5Byte := md5.Sum( []byte(fmt.Sprintf("%s%s", "Dqlt6dsUE8WACmqmIznB", CookieTime.String())) )
+	signString := string(md5Byte[:])
+	if(signString != CookieKey.String() || CookieTimeInt64 + 86400 > time.Now().Unix() ){
+		c.Info("签名验证失败: %s", CookieKey.String())
+		c.Write([]byte(NotAuthorized))
+		return
+	}
+
 	// If the client specified http auth and it doesn't match this request's auth
 	// then fail the request with 401 Not Authorized and request the client reissue the
 	// request with basic authdeny the request
 	if tunnel.req.HttpAuth != "" && auth != tunnel.req.HttpAuth {
-		c.Info("验证失败: %s", auth)
+		c.Info("Auth验证失败: %s", auth)
 		c.Write([]byte(NotAuthorized))
 		return
 	}
