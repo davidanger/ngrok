@@ -22,7 +22,7 @@ Authorization required
 `
 
 	NotKeyAuthorized = `HTTP/1.0 401 Unauthorized
-Content-Length: 12
+Content-Length: 23
 
 未授权客户机访问数据。
 `
@@ -87,8 +87,7 @@ func httpHandler(c conn.Conn, proto string) {
 	// read out the Host header and auth from the request
 	host := strings.ToLower(vhostConn.Host())
 	auth := vhostConn.Request.Header.Get("Authorization")
-	CookieKey, _ := vhostConn.Request.Cookie("tunnels-key")
-	CookieTime, _ := vhostConn.Request.Cookie("tunnels-time")
+
 
 	// done reading mux data, free up the request memory
 	vhostConn.Free()
@@ -106,14 +105,26 @@ func httpHandler(c conn.Conn, proto string) {
 	}
 
 	//添加cookie签名验证,过期时间为1天
-	CookieTimeInt64, err := strconv.ParseInt(CookieTime.Value, 10, 64)
-	md5Byte := md5.Sum( []byte(fmt.Sprintf("%s%s", "Dqlt6dsUE8WACmqmIznB", CookieTime.Value)) )
-	signString := fmt.Sprintf("%x", md5Byte)
-	isExpire := CookieTimeInt64 <= (time.Now().Unix() - 86400)
-	if(signString != CookieKey.Value || isExpire ){
-		c.Info("签名验证失败: %s, 时间戳: %s, 是否过期:%t, 正确签名: %s", CookieKey.Value, CookieTime.Value, isExpire, signString)
-		c.Write([]byte(NotKeyAuthorized))
-		return
+	//没有配置signatureKey参数不使用此功能
+	if(opts.signatureKey != ""){
+		//接受参数
+		CookieKey, _ := vhostConn.Request.Cookie("tunnels-key")
+		CookieTime, _ := vhostConn.Request.Cookie("tunnels-time")
+
+		//检查时间是否过期
+		CookieTimeInt64, _ := strconv.ParseInt(CookieTime.Value, 10, 64)
+		isExpire := CookieTimeInt64 <= (time.Now().Unix() - 86400)
+
+		//生成签名
+		md5Byte := md5.Sum( []byte(fmt.Sprintf("%s%s", opts.signatureKey, CookieTime.Value)) )
+		signString := fmt.Sprintf("%x", md5Byte)
+
+		//对比验证
+		if(signString != CookieKey.Value || isExpire ){
+			c.Info("签名验证失败: %s, 时间戳: %s, 是否过期:%t, 正确签名: %s", CookieKey.Value, CookieTime.Value, isExpire, signString)
+			c.Write([]byte(NotKeyAuthorized))
+			return
+		}
 	}
 
 	// If the client specified http auth and it doesn't match this request's auth

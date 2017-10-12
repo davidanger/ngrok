@@ -13,6 +13,7 @@ type Options struct {
 	tlsKey     string
 	logto      string
 	loglevel   string
+	signatureKey string
 }
 
 func parseArgs() *Options {
@@ -24,6 +25,7 @@ func parseArgs() *Options {
 	tlsKey := flag.String("tlsKey", "", "TLS密钥文件的路径")
 	logto := flag.String("log", "ngrok_log.log", "将日志消息写入此文件。 'stdout'和'none'有特殊意义")
 	loglevel := flag.String("log-level", "INFO", "要记录的消息级别。 其中之一: DEBUG, INFO, WARNING, ERROR")
+	signatureKey := flag.String("signature-key", "", "访问http代理签名,签名算法: md5(Cookie('tunnels-key')+Cookie('tunnels-time'))")
 	flag.Parse()
 
 	return &Options{
@@ -35,5 +37,6 @@ func parseArgs() *Options {
 		tlsKey:     *tlsKey,
 		logto:      *logto,
 		loglevel:   *loglevel,
+		signatureKey:   *signatureKey,
 	}
 }
