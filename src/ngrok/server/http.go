@@ -11,6 +11,7 @@ import (
 	"time"
 	"crypto/md5"
 	"strconv"
+	"runtime/debug"
 )
 
 const (
@@ -69,7 +70,7 @@ func httpHandler(c conn.Conn, proto string) {
 	defer func() {
 		// recover from failures
 		if r := recover(); r != nil {
-			c.Warn("http处理失败，出现错误 %v", r)
+			c.Warn("http处理失败，出现错误 %v: %s", r, debug.Stack())
 		}
 	}()
 
@@ -106,10 +107,16 @@ func httpHandler(c conn.Conn, proto string) {
 
 	//添加cookie签名验证,过期时间为1天
 	//没有配置signatureKey参数不使用此功能
-	if(opts.signatureKey != ""){
+	if opts.signatureKey != "" {
 		//接受参数
-		CookieKey, _ := vhostConn.Request.Cookie("tunnels-key")
-		CookieTime, _ := vhostConn.Request.Cookie("tunnels-time")
+		CookieKey, err := vhostConn.Request.Cookie("tunnels-key")
+		CookieTime, err := vhostConn.Request.Cookie("tunnels-time")
+
+		if err != nil {
+			c.Warn("无法读取Cookie: %v", err)
+			c.Write([]byte(BadRequest))
+			return
+		}
 
 		//检查时间是否过期
 		CookieTimeInt64, _ := strconv.ParseInt(CookieTime.Value, 10, 64)
@@ -120,7 +127,7 @@ func httpHandler(c conn.Conn, proto string) {
 		signString := fmt.Sprintf("%x", md5Byte)
 
 		//对比验证
-		if(signString != CookieKey.Value || isExpire ){
+		if signString != CookieKey.Value || isExpire {
 			c.Info("签名验证失败: %s, 时间戳: %s, 是否过期:%t, 正确签名: %s", CookieKey.Value, CookieTime.Value, isExpire, signString)
 			c.Write([]byte(NotKeyAuthorized))
 			return

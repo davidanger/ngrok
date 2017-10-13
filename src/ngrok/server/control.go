@@ -10,6 +10,10 @@ import (
 	"runtime/debug"
 	"strings"
 	"time"
+	"bytes"
+	"net/http"
+	"os"
+	"io/ioutil"
 )
 
 const (
@@ -353,4 +357,40 @@ func (c *Control) Replaced(replacement *Control) {
 
 	// tell the old one to shutdown
 	c.shutdown.Begin()
+}
+
+func (c *Control) TmsRequest(method, eventsType string, body *bytes.Reader) (resp *http.Response, err error) {
+
+	apiUrl := os.Getenv("API_URL")
+	if apiUrl == "" {
+		return
+	}
+
+	path := fmt.Sprintf("https://%s/api/ngrok/events/%s", apiUrl, eventsType)
+	req, err := http.NewRequest(method, path, body)
+	if err != nil {
+		return
+	}
+
+	if body != nil {
+		req.Header.Add("Content-Type", "application/json")
+		req.ContentLength = int64(body.Len())
+	}
+
+	requestStartAt := time.Now()
+	client := &http.Client{}
+	resp, err = client.Do(req)
+
+	if err != nil {
+		c.conn.Error("无法将指标事件发送到 TMS %v", err)
+	} else {
+		c.conn.Info("TMS 处理的请求 %f 秒", time.Since(requestStartAt).Seconds())
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			bytes, _ := ioutil.ReadAll(resp.Body)
+			c.conn.Error("获得 %v 响应， 从 TMS: %s", resp.StatusCode, bytes)
+		}
+	}
+
+	return
 }
