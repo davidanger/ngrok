@@ -216,7 +216,7 @@ func NewKeenIoMetrics(batchInterval time.Duration) *KeenIoMetrics {
 }
 
 func (k *KeenIoMetrics) AuthedRequest(method string, body *bytes.Reader) (resp *http.Response, err error) {
-	path := fmt.Sprintf("https://%s/api/ngrok/events/status", os.Getenv("API_URL"))
+	path := fmt.Sprintf("http://%s/api/ngrok/events/status", os.Getenv("API_URL"))
 	req, err := http.NewRequest(method, path, body)
 	if err != nil {
 		return
@@ -231,13 +231,13 @@ func (k *KeenIoMetrics) AuthedRequest(method string, body *bytes.Reader) (resp *
 	resp, err = k.HttpClient.Do(req)
 
 	if err != nil {
-		k.Error("无法将指标事件发送到 TMS %v", err)
+		k.Error("无法将指标事件发送到 TMS接口[%s] %v", path, err)
 	} else {
 		k.Info("TMS 处理的请求 %f 秒", time.Since(requestStartAt).Seconds())
 		defer resp.Body.Close()
 		if resp.StatusCode != 200 {
 			bytes, _ := ioutil.ReadAll(resp.Body)
-			k.Error("获得 %v 响应， 从 TMS: %s", resp.StatusCode, bytes)
+			k.Error("获得 %v 响应， 从 TMS接口[%s]: %s", resp.StatusCode, path, bytes)
 		}
 	}
 

@@ -23,7 +23,8 @@ Authorization required
 `
 
 	NotKeyAuthorized = `HTTP/1.0 401 Unauthorized
-Content-Length: 23
+Content-Length: 34
+Content-type: text/html; charset=utf-8
 
 未授权客户机访问数据。
 `
@@ -89,6 +90,15 @@ func httpHandler(c conn.Conn, proto string) {
 	host := strings.ToLower(vhostConn.Host())
 	auth := vhostConn.Request.Header.Get("Authorization")
 
+	//接受参数
+	CookieKey, err := vhostConn.Request.Cookie("tunnels-key")
+	CookieTime, err := vhostConn.Request.Cookie("tunnels-time")
+
+	if opts.signatureKey != "" && err != nil {
+		c.Warn("无法读取Cookie: %v", err)
+		c.Write([]byte(NotKeyAuthorized))
+		return
+	}
 
 	// done reading mux data, free up the request memory
 	vhostConn.Free()
@@ -108,16 +118,6 @@ func httpHandler(c conn.Conn, proto string) {
 	//添加cookie签名验证,过期时间为1天
 	//没有配置signatureKey参数不使用此功能
 	if opts.signatureKey != "" {
-		//接受参数
-		CookieKey, err := vhostConn.Request.Cookie("tunnels-key")
-		CookieTime, err := vhostConn.Request.Cookie("tunnels-time")
-
-		if err != nil {
-			c.Warn("无法读取Cookie: %v", err)
-			c.Write([]byte(BadRequest))
-			return
-		}
-
 		//检查时间是否过期
 		CookieTimeInt64, _ := strconv.ParseInt(CookieTime.Value, 10, 64)
 		isExpire := CookieTimeInt64 <= (time.Now().Unix() - 86400)
