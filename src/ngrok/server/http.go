@@ -12,6 +12,7 @@ import (
 	"crypto/md5"
 	"strconv"
 	"runtime/debug"
+	"encoding/json"
 )
 
 const (
@@ -40,7 +41,14 @@ Content-Length: 12
 
 Bad Request
 `
+	OkRequest = `HTTP/1.0 200 Ok
+Content-Length: %d
+Content-type: text/html; charset=utf-8
+
+%s
+`
 )
+
 
 // Listens for new http(s) connections from the public internet
 func startHttpListener(addr string, tlsCfg *tls.Config) (listener *conn.Listener) {
@@ -89,6 +97,27 @@ func httpHandler(c conn.Conn, proto string) {
 	// read out the Host header and auth from the request
 	host := strings.ToLower(vhostConn.Host())
 	auth := vhostConn.Request.Header.Get("Authorization")
+
+	//输出隧道的在线域名列表
+	subDomain := strings.Split(host,".")[0]
+	if subDomain == "status" {
+		c.Info("获取隧道域名列表请求 host: %v", host)
+		batch := make(map[string]string)
+
+		//循环连接控制类
+		for _, cc := range controlRegistry.controls {
+			//循环隧道类获得url
+			for k, t := range cc.tunnels{
+				mapKey := fmt.Sprintf("%d", k)
+				batch[mapKey] = t.url
+			}
+		}
+
+		//url数组json化后输出
+		payload, _ := json.Marshal(batch)
+		c.Write([]byte(fmt.Sprintf(OkRequest, len(payload), payload)))
+		return
+	}
 
 	//接受参数
 	CookieKey, err := vhostConn.Request.Cookie("tunnels-key")
