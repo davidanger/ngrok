@@ -101,15 +101,17 @@ func httpHandler(c conn.Conn, proto string) {
 	//输出隧道的在线域名列表
 	subDomain := strings.Split(host,".")[0]
 	if subDomain == "status" {
+		k := 0
 		c.Info("获取隧道域名列表请求 host: %v", host)
 		batch := make(map[string]string)
 
 		//循环连接控制类
 		for _, cc := range controlRegistry.controls {
 			//循环隧道类获得url
-			for k, t := range cc.tunnels{
+			for _, t := range cc.tunnels{
 				mapKey := fmt.Sprintf("%d", k)
 				batch[mapKey] = t.url
+				k++
 			}
 		}
 
