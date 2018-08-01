@@ -16,9 +16,9 @@ import (
 var metrics Metrics
 
 func init() {
-	keenApiKey := os.Getenv("KEEN_API_KEY")
+	apiUrl := os.Getenv("API_URL")
 
-	if keenApiKey != "" {
+	if apiUrl != "" {
 		metrics = NewKeenIoMetrics(60 * time.Second)
 	} else {
 		metrics = NewLocalMetrics(30 * time.Second)
@@ -110,8 +110,6 @@ func (m *LocalMetrics) OpenTunnel(t *Tunnel) {
 		m.tcpTunnelMeter.Mark(1)
 	case "http":
 		m.httpTunnelMeter.Mark(1)
-	case "https":
-		m.httpsTunnelMeter.Mark(1)
 	}
 }
 
@@ -138,7 +136,6 @@ func (m *LocalMetrics) Report() {
 			"osx":                   m.osxCounter.Count(),
 			"other":                 m.otherCounter.Count(),
 			"http隧道数":             m.httpTunnelMeter.Count(),
-			"https隧道数":            m.httpsTunnelMeter.Count(),
 			"tcp隧道数":              m.tcpTunnelMeter.Count(),
 			"隧道总数":               m.tunnelMeter.Count(),
 			"隧道率":                 m.tunnelMeter.Rate1(),
@@ -164,8 +161,6 @@ type KeenIoMetric struct {
 
 type KeenIoMetrics struct {
 	log.Logger
-	ApiKey       string
-	ProjectToken string
 	HttpClient   http.Client
 	Metrics      chan *KeenIoMetric
 }
@@ -173,15 +168,14 @@ type KeenIoMetrics struct {
 func NewKeenIoMetrics(batchInterval time.Duration) *KeenIoMetrics {
 	k := &KeenIoMetrics{
 		Logger:       log.NewPrefixLogger("指标"),
-		ApiKey:       os.Getenv("KEEN_API_KEY"),
-		ProjectToken: os.Getenv("KEEN_PROJECT_TOKEN"),
+
 		Metrics:      make(chan *KeenIoMetric, 1000),
 	}
 
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				k.Error("KeenIo指标失败: %v", r)
+				k.Error("TMS指标失败: %v", r)
 			}
 		}()
 
@@ -211,7 +205,7 @@ func NewKeenIoMetrics(batchInterval time.Duration) *KeenIoMetrics {
 						k.Debug("报告  %s 的 %d 指标", len(val), key)
 					}
 
-					k.AuthedRequest("POST", "/events", bytes.NewReader(payload))
+					k.AuthedRequest("POST", bytes.NewReader(payload))
 				}
 				batch = make(map[string][]interface{})
 			}
@@ -221,14 +215,12 @@ func NewKeenIoMetrics(batchInterval time.Duration) *KeenIoMetrics {
 	return k
 }
 
-func (k *KeenIoMetrics) AuthedRequest(method, path string, body *bytes.Reader) (resp *http.Response, err error) {
-	path = fmt.Sprintf("https://api.keen.io/3.0/projects/%s%s", k.ProjectToken, path)
+func (k *KeenIoMetrics) AuthedRequest(method string, body *bytes.Reader) (resp *http.Response, err error) {
+	path := fmt.Sprintf("http://%s/api/ngrok/events/status", os.Getenv("API_URL"))
 	req, err := http.NewRequest(method, path, body)
 	if err != nil {
 		return
 	}
-
-	req.Header.Add("Authorization", k.ApiKey)
 
 	if body != nil {
 		req.Header.Add("Content-Type", "application/json")
@@ -239,13 +231,13 @@ func (k *KeenIoMetrics) AuthedRequest(method, path string, body *bytes.Reader) (
 	resp, err = k.HttpClient.Do(req)
 
 	if err != nil {
-		k.Error("无法将指标事件发送到 keen.io %v", err)
+		k.Error("无法将指标事件发送到 TMS接口[%s] %v", path, err)
 	} else {
-		k.Info("keen.io 处理的请求 %f 秒", time.Since(requestStartAt).Seconds())
+		k.Info("TMS 处理的请求 %f 秒", time.Since(requestStartAt).Seconds())
 		defer resp.Body.Close()
 		if resp.StatusCode != 200 {
 			bytes, _ := ioutil.ReadAll(resp.Body)
-			k.Error("获得 %v 响应， 从 keen.io: %s", resp.StatusCode, bytes)
+			k.Error("获得 %v 响应， 从 TMS接口[%s]: %s", resp.StatusCode, path, bytes)
 		}
 	}
 

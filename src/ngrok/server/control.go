@@ -10,6 +10,11 @@ import (
 	"runtime/debug"
 	"strings"
 	"time"
+	"bytes"
+	"net/http"
+	"os"
+	"io/ioutil"
+	"encoding/json"
 )
 
 const (
@@ -154,6 +159,10 @@ func (c *Control) registerTunnel(rawTunnelReq *msg.ReqTunnel) {
 		}
 
 		rawTunnelReq.Hostname = strings.Replace(t.url, proto+"://", "", 1)
+
+		//上报服务状态
+		payload := []byte(fmt.Sprintf("{\"url[]\":\"%s\"}",t.url))
+		c.TmsRequest("POST","online", bytes.NewReader(payload))
 	}
 }
 
@@ -259,6 +268,8 @@ func (c *Control) stopper() {
 		}
 	}()
 
+
+
 	// wait until we're instructed to shutdown
 	c.shutdown.WaitBegin()
 
@@ -277,7 +288,10 @@ func (c *Control) stopper() {
 	c.conn.Close()
 
 	// shutdown all of the tunnels
-	for _, t := range c.tunnels {
+	batch := make(map[string]string)
+	for k, t := range c.tunnels {
+		mapKey := fmt.Sprintf("url[%d]", k)
+		batch[mapKey] = t.url
 		t.Shutdown()
 	}
 
@@ -289,6 +303,16 @@ func (c *Control) stopper() {
 
 	c.shutdown.Complete()
 	c.conn.Info("关闭完成")
+
+	//发送服务状态
+	payload, err := json.Marshal(batch)
+	if err != nil {
+		c.conn.Error("无法序列化指标有效内容: %v, %v", batch, err)
+	} else {
+		c.TmsRequest("POST","offline", bytes.NewReader(payload))
+	}
+	batch = make(map[string]string)
+
 }
 
 func (c *Control) RegisterProxy(conn conn.Conn) {
@@ -353,4 +377,40 @@ func (c *Control) Replaced(replacement *Control) {
 
 	// tell the old one to shutdown
 	c.shutdown.Begin()
+}
+
+func (c *Control) TmsRequest(method, eventsType string, body *bytes.Reader) (resp *http.Response, err error) {
+
+	apiUrl := os.Getenv("API_URL")
+	if apiUrl == "" {
+		return
+	}
+
+	path := fmt.Sprintf("http://%s/api/ngrok/events/%s", apiUrl, eventsType)
+	req, err := http.NewRequest(method, path, body)
+	if err != nil {
+		return
+	}
+
+	if body != nil {
+		req.Header.Add("Content-Type", "application/json")
+		req.ContentLength = int64(body.Len())
+	}
+
+	requestStartAt := time.Now()
+	client := &http.Client{}
+	resp, err = client.Do(req)
+
+	if err != nil {
+		c.conn.Error("无法将指标事件发送到 TMS接口[%s] %v", path, err)
+	} else {
+		c.conn.Info("TMS 处理的请求 %f 秒", time.Since(requestStartAt).Seconds())
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			bytes, _ := ioutil.ReadAll(resp.Body)
+			c.conn.Error("获得 %v 响应， 从 TMS接口[%s]: %s", resp.StatusCode, path, bytes)
+		}
+	}
+
+	return
 }
